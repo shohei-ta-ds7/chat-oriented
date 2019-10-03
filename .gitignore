@@ -1,0 +1,17 @@
+# pycache
+__pycache__
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# data directory
+data/
+
+# log directory
+log/
+
+# trained model log directory
+model_log/
+
+# DailyDialog Corpus
+ijcnlp_dailydialog*
