@@ -13,5 +13,8 @@ log/
 # trained model log directory
 model_log/
 
+# inference log directory
+inf_log/
+
 # DailyDialog Corpus
 ijcnlp_dailydialog*

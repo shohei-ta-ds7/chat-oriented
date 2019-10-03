@@ -9,6 +9,7 @@ verify_ssl = true
 numpy = "*"
 scipy = "*"
 tqdm = "*"
+torch = "*"
 
 [requires]
 python_version = "3.6"
