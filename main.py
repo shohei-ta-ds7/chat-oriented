@@ -18,9 +18,10 @@ from torch.utils.data import DataLoader
 
 from utils.log_print import loginfo_and_print
 
+from dataset import DialDataset
 from train import run_epochs
 from test import test
-from dataset import DialDataset
+from test import chat
 
 from model.encdec import EncDec
 from model.hred import HRED
@@ -62,7 +63,7 @@ def get_argparse():
     )
     parser.add_argument(
         "--pretrained",
-        help="the model is pretrained (then, start training from epoch 1)",
+        help="model is pretrained (then, start training from epoch 1)",
         action="store_true"
     )
     parser.add_argument(
@@ -87,9 +88,14 @@ def get_argparse():
         help="inference mode",
         action="store_true"
     )
+    parser.add_argument(
+        "--chat_mode",
+        help="chat mode",
+        action="store_true"
+    )
 
     hparams = parser.add_argument_group("hyper parameters",
-        "These arguments are ignored if a checkpoint file is given and the model is not pretrained.")
+        "These arguments are ignored if a checkpoint file is given and model is not pretrained.")
     hparams.add_argument(
         "--model_arc",
         help="model architecture (encdec or hred)",
@@ -249,10 +255,12 @@ if __name__ == "__main__":
     save_every = args.save_every
     fix_embedding = args.fix_embedding
     train = not args.inference
+    chat_mode = args.chat_mode
     pickle_path = args.output
     if not train:
         assert checkpoint_path is not None
-        assert pickle_path is not None
+        if not chat_mode:
+            assert pickle_path is not None
     logger.info("Data directory: {}".format(data_dir))
     logger.info("Vocabulary file: {}".format(vocab_path))
     logger.info("Model prefix: {}".format(model_pre))
@@ -300,7 +308,7 @@ if __name__ == "__main__":
     else:
         itfloss_weight = None
 
-    print("Building the model...")
+    print("Building model...")
     if hparams["model_arc"] == encdec:
         model = EncDec(hparams, n_words, itfloss_weight, fix_embedding).cuda()
     elif hparams["model_arc"] == hred:
@@ -312,13 +320,15 @@ if __name__ == "__main__":
     print("Model built and ready to go!")
 
     if train:
-        print("Training the model...")
+        print("Training model...")
         run_epochs(
             hparams, model, dataset, valid_dataset, model_pre,
             valid_every, save_every, checkpoint, pretrained
         )
-        print("Done")
+    elif chat_mode:
+        print("Chatting with bot...")
+        chat(hparams, model, vocab)
     else:
         print("Inference utterances...")
         test(hparams, model, dataset, pickle_path)
-        print("Done")
+    print("Done")
