@@ -85,14 +85,9 @@ def get_argparse():
         action="store_true"
     )
     parser.add_argument(
-        "--inference",
-        help="inference mode",
-        action="store_true"
-    )
-    parser.add_argument(
-        "--chat_mode",
-        help="chat mode",
-        action="store_true"
+        "--mode",
+        help="model mode (train, inference, or chat)",
+        default="train"
     )
 
     hparams = parser.add_argument_group("hyper parameters",
@@ -255,20 +250,20 @@ if __name__ == "__main__":
     valid_every = args.valid_every
     save_every = args.save_every
     fix_embedding = args.fix_embedding
-    train = not args.inference
-    chat_mode = args.chat_mode
+    mode = args.mode
     inf_pkl = args.inf_pkl
-    if not train:
+    if mode == "inference":
         assert checkpoint_path is not None
-        if not chat_mode:
-            assert inf_pkl is not None
+    elif mode == "chat":
+        assert checkpoint_path is not None
+        assert inf_pkl is not None
     logger.info("Data directory: {}".format(data_dir))
     logger.info("Vocabulary file: {}".format(vocab_path))
     logger.info("Model prefix: {}".format(model_pre))
     logger.info("Checkpoint path: {}".format(checkpoint_path))
     logger.info("Pretrained: {}".format(pretrained))
     logger.info("Fix embedding: {}".format(fix_embedding))
-    logger.info("Training mode: {}".format(train))
+    logger.info("Model mode: {}".format(mode))
     logger.info("Inference pickle path: {}".format(inf_pkl))
 
     os.makedirs(os.path.dirname(model_pre), exist_ok=True)
@@ -288,12 +283,12 @@ if __name__ == "__main__":
         hparams = checkpoint["hparams"]
     if checkpoint is None or pretrained:
         hparams = parse_hparams(args)
-    if not train:
+    if mode != "train":
         hparams = update_hparams(hparams)
     for k, v in hparams.items():
         logger.info("{}: {}".format(k, v))
 
-    if train:
+    if mode == "train":
         data_pre = data_dir+"/validation"
         print("Loading valid dataset...")
         valid_dataset = DialDataset(hparams, data_pre, vocab)
@@ -320,16 +315,18 @@ if __name__ == "__main__":
         model.load_state_dict(checkpoint["model"])
     print("Model built and ready to go!")
 
-    if train:
+    if mode == "train":
         print("Training model...")
         run_epochs(
             hparams, model, dataset, valid_dataset, model_pre,
             valid_every, save_every, checkpoint, pretrained
         )
-    elif chat_mode:
+    elif mode == "inference":
+        print("Inference utterances...")
+        test(hparams, model, dataset, inf_pkl)
+    elif mode == "chat":
         print("Chatting with bot...")
         chat(hparams, model, vocab)
     else:
-        print("Inference utterances...")
-        test(hparams, model, dataset, inf_pkl)
+        raise ValueError("Unknown mode!")
     print("Done")

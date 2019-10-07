@@ -43,7 +43,7 @@ python ./ncm/main.py --model_arc MODEL_ARCHITECTURE --model_pre MODEL_PREFIX
 
 "MODEL_ARCHITECTURE" is an NCM architecture such as HRED.
 
-"MODEL_PREFIX" is a prefix of checkpoints such as "./pkl/ncm."
+"MODEL_PREFIX" is a prefix of checkpoints such as "./pkl/ncm".
 
 To print arguments, type as follows.
 
@@ -54,14 +54,20 @@ python ./ncm/main.py --help
 - Beam Search Decoding
 
 ```sh
-python ./ncm/main.py --inference -c CHECKPOINT_PATH -i INF_PICKLE
+python ./ncm/main.py --mode inference -c CHECKPOINT_PATH -i INF_PICKLE
 ```
 
-"--inference" means inference mode.
+"CHECKPOINT_PATH" is a checkpoint path such as "./pkl/ncm_1.tar".
 
-"CHECKPOINT_PATH" is a checkpoint path such as "./pkl/ncm_1.tar."
+"INF_PICKLE" is a inference pickle path such as "./pkl/inf.pkl".
 
-"INF_PICKLE" is a inference pickle path such as "./pkl/inf.pkl."
+- Chatting with NCM
+
+```sh
+python ./ncm/main.py --mode chat -c CHECKPOINT_PATH
+```
+
+To quit, input ":q" or ":quit".
 
 ## Licence
 

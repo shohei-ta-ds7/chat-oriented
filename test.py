@@ -56,6 +56,7 @@ def chat(hparams, model, vocab):
     src_list = []
     while(1):
         src_sent = input('> ')
+        loginfo_and_print(logger, "User: {}".format(src_sent))
         if src_sent == ":q" or src_sent == ":quit":
             break
         src_list += [src_sent]
@@ -68,7 +69,7 @@ def chat(hparams, model, vocab):
         _, decoded_uttrs, _ = inference(hparams, model, vocab, data, chat_mode=True)
 
         src_list += [decoded_uttrs[0]]
-        print("bot: {}".format(decoded_uttrs[0]))
+        loginfo_and_print(logger, "Bot : {}".format(decoded_uttrs[0]))
 
 
 def inference(hparams, model, vocab, data, chat_mode=False):

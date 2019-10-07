@@ -4,17 +4,14 @@ __pycache__
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# DailyDialog Corpus
+ijcnlp_dailydialog*
+
 # data directory
 data/
 
 # log directory
 log/
 
-# trained model log directory
-model_log/
-
-# inference log directory
-inf_log/
-
-# DailyDialog Corpus
-ijcnlp_dailydialog*
+# pickle file directory
+pkl/
