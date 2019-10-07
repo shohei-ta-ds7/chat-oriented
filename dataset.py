@@ -22,17 +22,12 @@ np.random.seed(0)
 
 
 class DialDataset(Dataset):
-    def __init__(self, hparams, data_pre, vocab, tfdloss_weight=None):
+    def __init__(self, hparams, data_pre, vocab):
         super().__init__()
         self.hparams = hparams
         self.vocab = vocab
-
         self.data, self.grouped_data = self.read_dials(data_pre)
-
-        if not tfdloss_weight:
-            self.tfdloss_weight = self.calc_tfdloss_weight(self.data)
-        else:
-            self.tfdloss_weight = tfdloss_weight
+        self.itfloss_weight = self.calc_itfloss_weight(self.data)
         self.init_epoch(1)
 
     def read_dials(self, prefix):
@@ -147,12 +142,12 @@ class DialDataset(Dataset):
             )
         return grouped_data
 
-    def calc_tfdloss_weight(self, data):
+    def calc_itfloss_weight(self, data):
         PAD_id = self.hparams["PAD_id"]
         SOS_id = self.hparams["SOS_id"]
         EOS_id = self.hparams["EOS_id"]
         UNK_id = self.hparams["UNK_id"]
-        tfd_lmd = self.hparams["tfd_lambda"]
+        itf_lmd = self.hparams["itf_lambda"]
         counter = Counter([
             id for dial in data
             for uttr in dial["dial"]
@@ -166,7 +161,7 @@ class DialDataset(Dataset):
         counter[SOS_id] = uttr_num
         counter[EOS_id] = uttr_num
         counter[UNK_id] = uttr_num
-        return [1/((counter[i]+1) ** tfd_lmd) for i in range(len(self.vocab["wtoi"]))]
+        return [1/((counter[i]+1) ** itf_lmd) for i in range(len(self.vocab["wtoi"]))]
 
     def init_epoch(self, epoch):
         print("Initializing data...")

@@ -162,8 +162,13 @@ def get_argparse():
         default=1.0
     )
     hparams.add_argument(
-        "--tfd_lambda",
-        help="tfd loss lambda",
+        "--loss",
+        help="loss function (ce (Cross Entropy) or itf (Inverse Token Frequency))",
+        default="ce"
+    )
+    hparams.add_argument(
+        "--itf_lambda",
+        help="itf loss lambda",
         type=float,
         default=0.4
     )
@@ -215,7 +220,8 @@ def parse_hparams(args):
         "lr_decay": args.lr_decay,
         "dropout": args.dropout,
         "teacher_forcing_ratio": args.teacher_forcing_ratio,
-        "tfd_lambda": args.tfd_lambda,
+        "loss": args.loss,
+        "itf_lambda": args.itf_lambda,
         "l2_pooling": args.l2_pooling,
     }
 
@@ -279,25 +285,26 @@ if __name__ == "__main__":
         logger.info("{}: {}".format(k, v))
 
     if train:
-        data_pre = data_dir+"/train"
-        print("Loading the train dataset...")
-        train_dataset = DialDataset(hparams, data_pre, vocab)
-        tfdloss_weight = train_dataset.tfdloss_weight
-
         data_pre = data_dir+"/validation"
-        print("Loading the valid dataset...")
-        valid_dataset = DialDataset(hparams, data_pre, vocab, tfdloss_weight=tfdloss_weight)
+        print("Loading valid dataset...")
+        valid_dataset = DialDataset(hparams, data_pre, vocab)
+
+        data_pre = data_dir+"/train"
     else:
         data_pre = data_dir+"/test"
-        print("Loading the test dataset...")
-        test_dataset = DialDataset(hparams, data_pre, vocab)
-        tfdloss_weight = test_dataset.tfdloss_weight
+
+    print("Loading dataset...")
+    dataset = DialDataset(hparams, data_pre, vocab)
+    if hparams["loss"] == "itf":
+        itfloss_weight = dataset.itfloss_weight
+    else:
+        itfloss_weight = None
 
     print("Building the model...")
     if hparams["model_arc"] == encdec:
-        model = EncDec(hparams, n_words, tfdloss_weight, fix_embedding).cuda()
+        model = EncDec(hparams, n_words, itfloss_weight, fix_embedding).cuda()
     elif hparams["model_arc"] == hred:
-        model = HRED(hparams, n_words, tfdloss_weight, fix_embedding).cuda()
+        model = HRED(hparams, n_words, itfloss_weight, fix_embedding).cuda()
     else:
         raise ValueError("Unknown model architecture!")
     if checkpoint:
@@ -307,11 +314,11 @@ if __name__ == "__main__":
     if train:
         print("Training the model...")
         run_epochs(
-            hparams, model, train_dataset, valid_dataset, model_pre,
+            hparams, model, dataset, valid_dataset, model_pre,
             valid_every, save_every, checkpoint, pretrained
         )
         print("Done")
     else:
         print("Inference utterances...")
-        test(hparams, model, test_dataset, pickle_path)
+        test(hparams, model, dataset, pickle_path)
         print("Done")

@@ -11,7 +11,7 @@ from torch.nn.utils.rnn import pad_packed_sequence
 
 
 class HRED(nn.Module):
-    def __init__(self, hparams, n_words, tfdloss_weight, fix_embedding=False):
+    def __init__(self, hparams, n_words, itfloss_weight, fix_embedding=False):
         super().__init__()
         self.training = True
         self.hparams = hparams
@@ -41,7 +41,7 @@ class HRED(nn.Module):
             dropout=hparams["dropout"]
         )
         self.criterion = nn.NLLLoss(
-            weight=torch.tensor(tfdloss_weight).cuda(),
+            weight=torch.tensor(itfloss_weight).cuda() if itfloss_weight else None,
             ignore_index=hparams["PAD_id"]
         )
 

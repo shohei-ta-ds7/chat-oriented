@@ -16,14 +16,14 @@ from utils.batch_sampler import collate_fn
 logger = logging.getLogger("logger").getChild("test")
 
 
-def test(hparams, model, test_dataset, pickle_path):
+def test(hparams, model, dataset, pickle_path):
     PAD_id = hparams["PAD_id"]
     EOS_id = hparams["EOS_id"]
-    vocab = test_dataset.vocab
+    vocab = dataset.vocab
     model.eval()
 
     dial_list = []
-    pbar = tqdm.tqdm(enumerate(test_dataset), total=len(test_dataset))
+    pbar = tqdm.tqdm(enumerate(dataset), total=len(dataset))
     for idx, data in pbar:
         data = collate_fn([data])
         pbar.set_description("Dial {}".format(idx+1))

@@ -26,7 +26,7 @@ hred = "hred"
 
 
 def run_epochs(
-        hparams, model, train_dataset, valid_dataset, model_pre,
+        hparams, model, dataset, valid_dataset, model_pre,
         valid_every=1000, save_every=1, checkpoint=None, pretrained=False
     ):
     learning_rate = hparams["learning_rate"]
@@ -66,9 +66,9 @@ def run_epochs(
     )
     for epoch in range(start_epoch, max_epoch+1):
         dataloader = DataLoader(
-            train_dataset, batch_size=batch_size, collate_fn=collate_fn,
+            dataset, batch_size=batch_size, collate_fn=collate_fn,
             drop_last=True, num_workers=2,
-            sampler=RandomBatchSampler(train_dataset, batch_size))
+            sampler=RandomBatchSampler(dataset, batch_size))
         pbar = tqdm.tqdm(enumerate(dataloader), total=len(dataloader))
         loss = 0
         for idx, data in pbar:
@@ -108,7 +108,7 @@ def run_epochs(
                 "de_sch": decoder_scheduler.state_dict(),
             }, model_pre+"_{}.tar".format(epoch))
 
-        train_dataset.init_epoch(epoch+1)
+        dataset.init_epoch(epoch+1)
 
 
 def valid(model, valid_dataset, batch_size, hparams):
