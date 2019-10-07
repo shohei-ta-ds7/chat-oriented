@@ -109,7 +109,7 @@ class HRED(nn.Module):
         if train:
             return self.compute_loss(decoder_hidden, context_output, data["tgt"])
         else:
-            return self.inf_uttr(decoder_hidden[:, -1].unsqueeze(1).contiguous(), context_output[-1].unsqueeze(0))
+            return self.beam_search(decoder_hidden[:, -1].unsqueeze(1).contiguous(), context_output[-1].unsqueeze(0))
 
     def l2_pooling(self, hiddens, src_len):
         return torch.stack(
@@ -127,7 +127,7 @@ class HRED(nn.Module):
         print_losses = []
         n_totals = 0
 
-        decoder_input = torch.ones(batch_size, 1).type(torch.cuda.LongTensor)  # <s>
+        decoder_input = torch.ones(batch_size, 1).type(torch.cuda.LongTensor)  # <sos>
 
         # Set initial decoder hidden state to the encoder's final hidden state
         decoder_hidden = initial_hidden
@@ -166,7 +166,7 @@ class HRED(nn.Module):
 
         return loss, (sum(print_losses) / n_totals)
 
-    def inf_uttr(self, initial_hidden, context_hidden):
+    def beam_search(self, initial_hidden, context_hidden):
         n_words = self.n_words
         EOS_id = self.hparams["EOS_id"]
         batch_size = context_hidden.size(0)
@@ -174,13 +174,12 @@ class HRED(nn.Module):
         num_layers = self.hparams["num_layers"]
         beam_width = self.hparams["beam_width"]
         len_alpha = self.hparams["len_alpha"]
-        # eos_gamma = self.hparams["eos_gamma"]
         suppress_lmd = self.hparams["suppress_lambda"]
         MAX_UTTR_LEN = self.hparams["MAX_UTTR_LEN"]
 
         decoder_hidden = initial_hidden
         # Inference tgt
-        decoder_input = torch.ones(batch_size, 1).type(torch.cuda.LongTensor)  # <s>
+        decoder_input = torch.ones(batch_size, 1).type(torch.cuda.LongTensor)  # <sos>
         decoder_output, decoder_hidden = self.decoder(
                 decoder_input, decoder_hidden, context_hidden
         )
@@ -207,7 +206,7 @@ class HRED(nn.Module):
             suppressor = torch.ones(repet_counts.size()).cuda() / repet_counts.pow(suppress_lmd)
             decoder_output = topv.unsqueeze(1) + F.log_softmax(decoder_output * suppressor, dim=1)
 
-            # Don't update output, hidden if the last word is </s>
+            # Don't update output, hidden if the last word is <eos>
             if len(eos_idx) > 0:
                 decoder_output[eos_idx] = float("-inf")
                 decoder_output[eos_idx, EOS_id] = prev_output[eos_idx, EOS_id]
@@ -215,7 +214,6 @@ class HRED(nn.Module):
 
             lp = torch.tensor([(5+len(inf_uttr)+1)**len_alpha / (5+1)**len_alpha for inf_uttr in inf_uttrs]).cuda()
             normalized_output = decoder_output / lp.unsqueeze(1)
-            # normalized_output[::, EOS_id] -= eos_gamma * (MAX_UTTR_LEN / torch.tensor([len(uttr) for uttr in inf_uttrs]).cuda().float())
             topv, topi = normalized_output.topk(beam_width)
             topv, topi = topv.flatten(), topi.flatten()
             topv, perm_index = topv.sort(0, descending=True)
@@ -234,7 +232,7 @@ class HRED(nn.Module):
                 for i, former in enumerate(former_index)
             ]
 
-            # If all last words are </s>, break
+            # If all last words are <eos>, break
             if sum([words[-1] == EOS_id for words in inf_uttrs]) == beam_width:
                 break
 
