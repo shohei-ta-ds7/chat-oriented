@@ -51,15 +51,16 @@ def get_argparse():
     parser.add_argument(
         "-m", "--model_pre",
         help="model prefix",
-        default="./model_log/ncm"
+        default="./pkl/ncm"
     )
     parser.add_argument(
         "-c", "--checkpoint",
         help="checkpoint model path"
     )
     parser.add_argument(
-        "-o", "--output",
-        help="pickle output filepath of inference",
+        "-i", "--inf_pkl",
+        help="pickle inf_pkl filepath of inference",
+        default="./pkl/inf"
     )
     parser.add_argument(
         "--pretrained",
@@ -256,11 +257,11 @@ if __name__ == "__main__":
     fix_embedding = args.fix_embedding
     train = not args.inference
     chat_mode = args.chat_mode
-    pickle_path = args.output
+    inf_pkl = args.inf_pkl
     if not train:
         assert checkpoint_path is not None
         if not chat_mode:
-            assert pickle_path is not None
+            assert inf_pkl is not None
     logger.info("Data directory: {}".format(data_dir))
     logger.info("Vocabulary file: {}".format(vocab_path))
     logger.info("Model prefix: {}".format(model_pre))
@@ -268,11 +269,11 @@ if __name__ == "__main__":
     logger.info("Pretrained: {}".format(pretrained))
     logger.info("Fix embedding: {}".format(fix_embedding))
     logger.info("Training mode: {}".format(train))
-    logger.info("Pickle output: {}".format(pickle_path))
+    logger.info("Inference pickle path: {}".format(inf_pkl))
 
     os.makedirs(os.path.dirname(model_pre), exist_ok=True)
-    if pickle_path:
-        os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
+    if inf_pkl:
+        os.makedirs(os.path.dirname(inf_pkl), exist_ok=True)
 
     with open(vocab_path, "rb") as f:
         vocab = pickle.load(f)
@@ -330,5 +331,5 @@ if __name__ == "__main__":
         chat(hparams, model, vocab)
     else:
         print("Inference utterances...")
-        test(hparams, model, dataset, pickle_path)
+        test(hparams, model, dataset, inf_pkl)
     print("Done")
