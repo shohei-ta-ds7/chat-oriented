@@ -7,3 +7,6 @@ unzip train.zip
 unzip validation.zip
 unzip test.zip
 cd ..
+python load_dailydialog.py -i ijcnlp_dailydialog/train/ -o data
+python load_dailydialog.py -i ijcnlp_dailydialog/validation/ -o data
+python load_dailydialog.py -i ijcnlp_dailydialog/test/ -o data

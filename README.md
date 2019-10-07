@@ -17,21 +17,11 @@ pipenv shell
 
 ### Preprocessing
 
-- Downloading & unzipping DailyDialog (http://yanran.li/dailydialog)
+- Downloading, unzipping, and preprocessing DailyDialog (http://yanran.li/dailydialog)
 
 ```sh
 dl_dailydialog.sh
 ```
-
-- Loading data
-
-```sh
-python load_dailydialog.py -i ijcnlp_dailydialog/train/ -o data
-python load_dailydialog.py -i ijcnlp_dailydialog/validation/ -o data
-python load_dailydialog.py -i ijcnlp_dailydialog/validation/ -o data
-```
-
-The first command outputs a vocabulary file.
 
 ### Training neural conversational models
 
