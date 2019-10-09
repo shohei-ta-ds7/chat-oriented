@@ -58,11 +58,6 @@ def get_argparse():
         help="checkpoint model path"
     )
     parser.add_argument(
-        "-i", "--inf_pkl",
-        help="pickle inf_pkl filepath of inference",
-        default="./pkl/inf"
-    )
-    parser.add_argument(
         "--pretrained",
         help="model is pretrained (then, start training from epoch 1)",
         action="store_true"
@@ -265,12 +260,8 @@ if __name__ == "__main__":
     save_every = args.save_every
     fix_embedding = args.fix_embedding
     mode = args.mode
-    inf_pkl = args.inf_pkl
-    if mode == "inference":
+    if mode != "train":
         assert checkpoint_path is not None
-    elif mode == "chat":
-        assert checkpoint_path is not None
-        assert inf_pkl is not None
     logger.info("Data directory: {}".format(data_dir))
     logger.info("Vocabulary file: {}".format(vocab_path))
     logger.info("Model prefix: {}".format(model_pre))
@@ -278,11 +269,8 @@ if __name__ == "__main__":
     logger.info("Pretrained: {}".format(pretrained))
     logger.info("Fix embedding: {}".format(fix_embedding))
     logger.info("Model mode: {}".format(mode))
-    logger.info("Inference pickle path: {}".format(inf_pkl))
 
     os.makedirs(os.path.dirname(model_pre), exist_ok=True)
-    if inf_pkl:
-        os.makedirs(os.path.dirname(inf_pkl), exist_ok=True)
 
     with open(vocab_path, "rb") as f:
         vocab = pickle.load(f)
@@ -337,7 +325,13 @@ if __name__ == "__main__":
         )
     elif mode == "inference":
         print("Inference utterances...")
-        test(hparams, model, dataset, inf_pkl)
+        test(
+            hparams, model, dataset,
+            os.path.join(
+                os.path.dirname(checkpoint_path),
+                "inf."+os.path.basename(checkpoint_path)
+            )
+        )
     elif mode == "chat":
         print("Chatting with bot...")
         chat(hparams, model, vocab)

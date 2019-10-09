@@ -44,12 +44,12 @@ python ./ncm/main.py --help
 - Beam Search Decoding
 
 ```sh
-python ./ncm/main.py --mode inference -c CHECKPOINT_PATH -i INF_PICKLE
+python ./ncm/main.py --mode inference -c CHECKPOINT_PATH
 ```
 
-"CHECKPOINT_PATH" is a checkpoint path such as "./pkl/ncm_1.tar".
+"CHECKPOINT_PATH" is a checkpoint path such as "./pkl/ncm.tar".
 
-"INF_PICKLE" is a inference pickle path such as "./pkl/inf.pkl".
+An inference pickle file, such as "./pkl/inf.ncm.tar", will be outputted.
 
 - Chatting with NCM
 
