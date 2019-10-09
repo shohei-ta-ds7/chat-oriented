@@ -82,17 +82,18 @@ def inference(hparams, model, vocab, data, chat_mode=False):
         src = data["src"]
         even = len(src[0]) % 2 == 0
         for i, u in enumerate(src[0]):
+            u = [w for w in u if w != hparams["PAD_id"] and w != hparams["EOS_id"]]
             if even:
                 if i % 2 == 1:
-                    logger.info("User 1: {}".format(" ".join([vocab["itow"].get(w, "<unk>") for w in u])))
+                    logger.info("User 1: {}".format(" ".join([vocab["itow"].get(w.item(), "<unk>") for w in u])))
                 else:
-                    logger.info("User 2: {}".format(" ".join([vocab["itow"].get(w, "<unk>") for w in u])))
+                    logger.info("User 2: {}".format(" ".join([vocab["itow"].get(w.item(), "<unk>") for w in u])))
             else:
                 if i % 2 == 0:
-                    logger.info("User 1: {}".format(" ".join([vocab["itow"].get(w, "<unk>") for w in u])))
+                    logger.info("User 1: {}".format(" ".join([vocab["itow"].get(w.item(), "<unk>") for w in u])))
                 else:
-                    logger.info("User 2: {}".format(" ".join([vocab["itow"].get(w, "<unk>") for w in u])))
-        logger.info("User 2: {}".format(" ".join([vocab["itow"].get(w, "<unk>") for w in data["tgt"][0]])))
+                    logger.info("User 2: {}".format(" ".join([vocab["itow"].get(w.item(), "<unk>") for w in u])))
+        logger.info("User 2: {}".format(" ".join([vocab["itow"].get(w.item(), "<unk>") for w in data["tgt"][0]])))
 
     with torch.no_grad():
         inf_uttrs, likelihoods = model(data, train=False)
