@@ -17,11 +17,10 @@ from torch.nn.utils import clip_grad_norm_ as clip_grad_norm
 from torch.utils.data import DataLoader
 
 from utils.log_print import loginfo_and_print
-
-from dataset import DialDataset
-from train import run_epochs
-from test import test
-from test import chat
+from utils.dataset import DialDataset
+from utils.train import run_epochs
+from utils.test import test
+from utils.test import chat
 
 from model.encdec import EncDec
 from model.hred import HRED
