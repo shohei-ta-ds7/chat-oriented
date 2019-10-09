@@ -35,12 +35,16 @@ def test(hparams, model, dataset, pickle_path):
         dial_list += [{
             "id": idx,
             "src": [
-                " ".join([vocab["itow"].get(w, "<unk>") for w in s])
+                " ".join([
+                    vocab["itow"].get(w, "<unk>") for w in s
+                    if w != PAD_id and w != EOS_id
+                ])
                 for s in data["src"][0].numpy()
             ],
             "tgt": " ".join([
                 vocab["itow"].get(w, "<unk>")
                 for w in data["tgt"][0].numpy()
+                if w != PAD_id and w != EOS_id
             ]),
             "tgt_id": [[id for id in data["tgt"][0].tolist() if id != PAD_id and id != EOS_id]],
             "inf_id": [[id for id in res if id != PAD_id and id != EOS_id] for res in inf_uttrs],
