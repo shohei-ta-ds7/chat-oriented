@@ -122,6 +122,9 @@ class HRED(nn.Module):
         batch_size = tgt.size(0)
         MAX_TGT_LEN = tgt.size(1)
         teacher_forcing_ratio = self.hparams["teacher_forcing_ratio"]
+        loss_name = self.hparams["loss"]
+        mmi_lambda = self.hparams["mmi_lambda"]
+        mmi_gamma = self.hparams["mmi_gamma"]
 
         loss = 0
         print_losses = []
@@ -131,38 +134,38 @@ class HRED(nn.Module):
 
         # Set initial decoder hidden state to the encoder's final hidden state
         decoder_hidden = initial_hidden
+        # Zero tensor for U(T) of MMI
+        ut_decoder_hidden = torch.zeros(decoder_hidden.size()).cuda()
 
         # Determine if we are using teacher forcing this iteration
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
         # Forward batch of sequences through decoder one time step at a time
-        if use_teacher_forcing:
-            for t in range(MAX_TGT_LEN):
-                decoder_output, decoder_hidden = self.decoder(
-                    decoder_input, decoder_hidden, context_hidden
+        for t in range(MAX_TGT_LEN):
+            decoder_output, decoder_hidden = self.decoder(
+                decoder_input, decoder_hidden, context_hidden
+            )
+            if loss_name == "mmi":
+                ut_decoder_output, ut_decoder_hidden = self.decoder(
+                    decoder_input, ut_decoder_hidden, context_hidden
                 )
+
+            # Calculate and accumulate loss
+            mask_loss = self.criterion(F.log_softmax(decoder_output, dim=1), tgt[:, t])
+            if loss_name == "mmi" and t+1 <= mmi_gamma:
+                mask_loss -= mmi_lambda * self.criterion(F.log_softmax(ut_decoder_output, dim=1), tgt[:, t])
+            n_total = (tgt[:, t] != PAD_id).sum().item()
+            loss += mask_loss
+            print_losses.append(mask_loss.item() * n_total)
+            n_totals += n_total
+
+            if use_teacher_forcing:
                 # Teacher forcing: next input is current target
                 decoder_input = tgt[:, t].view(-1, 1)
-                # Calculate and accumulate loss
-                mask_loss = self.criterion(F.log_softmax(decoder_output, dim=1), tgt[:, t])
-                n_total = (tgt[:, t] != PAD_id).sum().item()
-                loss += mask_loss
-                print_losses.append(mask_loss.item() * n_total)
-                n_totals += n_total
-        else:
-            for t in range(MAX_TGT_LEN):
-                decoder_output, decoder_hidden = self.decoder(
-                    decoder_input, decoder_hidden, context_hidden
-                )
+            else:
                 # No teacher forcing: next input is decoder's own current output
                 _, topi = decoder_output.topk(1)
                 decoder_input = torch.LongTensor([[topi[i][0]] for i in range(batch_size)]).cuda()
-                # Calculate and accumulate loss
-                mask_loss = self.criterion(F.log_softmax(decoder_output, dim=1), tgt[:, t])
-                n_total = (tgt[:, t] != PAD_id).sum().item()
-                loss += mask_loss
-                print_losses.append(mask_loss.item() * n_total)
-                n_totals += n_total
 
         return loss, (sum(print_losses) / n_totals)
 

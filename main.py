@@ -165,8 +165,20 @@ def get_argparse():
     )
     hparams.add_argument(
         "--loss",
-        help="loss function (ce (Cross Entropy) or itf (Inverse Token Frequency))",
+        help="loss function (ce (Cross Entropy), mmi (Maximum Mutual Information), or itf (Inverse Token Frequency))",
         default="ce"
+    )
+    hparams.add_argument(
+        "--mmi_lambda",
+        help="mmi loss lambda",
+        type=float,
+        default=0.4
+    )
+    hparams.add_argument(
+        "--mmi_gamma",
+        help="mmi loss gamma",
+        type=int,
+        default=10
     )
     hparams.add_argument(
         "--itf_lambda",
@@ -223,6 +235,8 @@ def parse_hparams(args):
         "dropout": args.dropout,
         "teacher_forcing_ratio": args.teacher_forcing_ratio,
         "loss": args.loss,
+        "mmi_lambda": args.mmi_lambda,
+        "mmi_gamma": args.mmi_gamma,
         "itf_lambda": args.itf_lambda,
         "l2_pooling": args.l2_pooling,
     }
