@@ -24,6 +24,7 @@ from utils.test import chat
 
 from model.encdec import EncDec
 from model.hred import HRED
+from model.vhred import VHRED
 
 
 os.makedirs("./log", exist_ok=True)
@@ -38,6 +39,7 @@ logger.setLevel(logging.DEBUG)
 
 encdec = "encdec"
 hred = "hred"
+vhred = "vhred"
 
 
 def get_argparse():
@@ -88,7 +90,7 @@ def get_argparse():
         "These arguments are ignored if a checkpoint file is given and model is not pretrained.")
     hparams.add_argument(
         "--model_arc",
-        help="model architecture (encdec or hred)",
+        help="model architecture (encdec, hred, or vhred)",
         default="hred"
     )
     hparams.add_argument(
@@ -310,6 +312,8 @@ if __name__ == "__main__":
         model = EncDec(hparams, n_words, itfloss_weight, fix_embedding).cuda()
     elif hparams["model_arc"] == hred:
         model = HRED(hparams, n_words, itfloss_weight, fix_embedding).cuda()
+    elif hparams["model_arc"] == vhred:
+        model = VHRED(hparams, n_words, itfloss_weight, fix_embedding).cuda()
     else:
         raise ValueError("Unknown model architecture!")
     if checkpoint:

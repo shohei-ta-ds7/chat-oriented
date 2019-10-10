@@ -14,12 +14,13 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 
+from model.modules import FFN
 from model.modules import EncoderRNN
 from model.modules import ContextRNN
 from model.modules import HREDDecoderRNN
 
 
-class HRED(nn.Module):
+class VHRED(nn.Module):
     def __init__(self, hparams, n_words, itfloss_weight, fix_embedding=False):
         super().__init__()
         self.training = True
@@ -42,10 +43,24 @@ class HRED(nn.Module):
             hparams["num_layers"],
             dropout=hparams["dropout"]
         )
+        self.mean_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            2,
+            dropout=hparams["dropout"],
+            act="tanh"
+        )
+        self.var_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            2,
+            dropout=hparams["dropout"],
+            act="relu"
+        )
         self.decoder = HREDDecoderRNN(
             self.embedding,
             hparams["hidden_size"],
-            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*4,
             n_words,
             hparams["num_layers"],
             dropout=hparams["dropout"]
@@ -54,6 +69,7 @@ class HRED(nn.Module):
             weight=torch.tensor(itfloss_weight).cuda() if itfloss_weight else None,
             ignore_index=hparams["PAD_id"]
         )
+        self.kldivloss = nn.KLDivLoss()
 
     def forward(self, data, train=True):
         src = data["src"]
@@ -79,15 +95,24 @@ class HRED(nn.Module):
 
         encoder_output, encoder_hidden = self.encoder(src, src_len)
 
-        # num_layers * num_directions, batch * MAX_DIAL_LEN, hidden_size
-        # -> batch * MAX_DIAL_LEN, num_layers, num_directions * hidden_size
-        encoder_hidden = encoder_hidden.transpose(1, 0).contiguous().view(batch_size * MAX_DIAL_LEN, num_layers, -1)
-
         # Back from permutation
         if len(src_len) > 1:
             encoder_output = encoder_output[back_index]
-            encoder_hidden = encoder_hidden[back_index]
+            encoder_hidden = encoder_hidden[:, back_index]
             src_len = src_len[back_index]
+
+        if train:
+            post_encoder_output, post_encoder_hidden = self.encoder(
+                data["tgt"].cuda(), data["tgt_len"].cuda()
+            )
+
+        # num_layers * num_directions, batch * MAX_DIAL_LEN, hidden_size
+        # -> batch * MAX_DIAL_LEN, num_layers, num_directions * hidden_size
+        encoder_hidden = encoder_hidden.transpose(1, 0).contiguous().view(batch_size * MAX_DIAL_LEN, num_layers, -1)
+        if train:
+            # num_layers * num_directions, batch, hidden_size
+            # -> batch, num_layers, num_directions * hidden_size
+            post_encoder_hidden = post_encoder_hidden.transpose(1, 0).contiguous().view(batch_size, num_layers, -1)
 
         if self.hparams["l2_pooling"]:
             # Separate forward and backward hiddens
@@ -96,28 +121,63 @@ class HRED(nn.Module):
             forward = self.l2_pooling(encoder_output[:, :, 0], src_len)
             backward = self.l2_pooling(encoder_output[:, :, 1], src_len)
             encoder_hidden = torch.cat((forward, backward), dim=1).view(batch_size, MAX_DIAL_LEN, -1)
+            if train:
+                # Separate forward and backward hiddens
+                post_encoder_output = post_encoder_output.view(batch_size, data["tgt"].size(1), 2, -1)
+                # L2 pooling
+                forward = self.l2_pooling(post_encoder_output[:, :, 0], data["tgt_len"])
+                backward = self.l2_pooling(post_encoder_output[:, :, 1], data["tgt_len"])
+                post_encoder_hidden = torch.cat((forward, backward), dim=1).view(batch_size, 1, -1)
         else:
             # Reshape to each uttr context (use only top hidden states)
             encoder_hidden = encoder_hidden[:, -1].view(batch_size, MAX_DIAL_LEN, -1)
+            if train:
+                post_encoder_hidden = post_encoder_hidden[:, -1].view(batch_size, 1, -1)
 
         # Input each dial context
-        context_output, _ = self.context(encoder_hidden)
+        context_output, context_hidden = self.context(encoder_hidden)
+        if train:
+            post_context_output, _ = self.context(
+                post_encoder_hidden, context_hidden
+            )
         # batch, uttr, hidden_size -> batch * uttr, hidden_size
         context_output = context_output[:, -1]
-        decoder_hidden = (context_output[:, :hidden_size] + context_output[:, hidden_size:])
+        z = self.sample_z(context_output)
+        if train:
+            post_context_output = post_context_output[:, 0]
+            post_z = self.sample_z(post_context_output)
+        context_output = torch.cat((context_output, z), dim=1)
+        decoder_hidden = (
+            context_output[:, :hidden_size]
+            + context_output[:, hidden_size:hidden_size*2]
+            + context_output[:, hidden_size*2:hidden_size*3]
+            + context_output[:, hidden_size*3:]
+        )
         decoder_hidden = decoder_hidden.expand(num_layers, batch_size, hidden_size).contiguous()
 
         if train:
-            return self.compute_loss(decoder_hidden, context_output, data["tgt"])
+            return self.compute_loss(decoder_hidden, context_output, z, post_z, data["tgt"])
         else:
             return self.beam_search(decoder_hidden[:, -1].unsqueeze(1).contiguous(), context_output[-1].unsqueeze(0))
 
     def l2_pooling(self, hiddens, src_len):
         return torch.stack(
-            [torch.sqrt(torch.sum(torch.pow(hiddens[b][:src_len[b]], 2), dim=0)/src_len[b].type(torch.FloatTensor).cuda())
-            for b in range(hiddens.size(0))])
+            [
+                torch.sqrt(
+                    torch.sum(torch.pow(hiddens[b][:src_len[b]], 2), dim=0)
+                    /src_len[b].type(torch.FloatTensor).cuda()
+                )
+                for b in range(hiddens.size(0))
+            ]
+        )
 
-    def compute_loss(self, initial_hidden, context_hidden, tgt):
+    def sample_z(self, hidden):
+        mean = self.mean_ffn(hidden)
+        var = self.var_ffn(hidden)
+        epsilon = torch.randn(mean.size()).cuda()
+        return mean + torch.sqrt(var) * epsilon
+
+    def compute_loss(self, initial_hidden, context_hidden, z, post_z, tgt):
         PAD_id = self.hparams["PAD_id"]
         tgt = tgt.cuda()
         batch_size = tgt.size(0)
@@ -168,7 +228,12 @@ class HRED(nn.Module):
                 _, topi = decoder_output.topk(1)
                 decoder_input = torch.LongTensor([[topi[i][0]] for i in range(batch_size)]).cuda()
 
-        return loss, (sum(print_losses) / n_totals)
+        kldiv_loss = -self.kldivloss(
+            F.log_softmax(z, dim=1),
+            F.softmax(post_z, dim=1)
+        )
+
+        return loss+kldiv_loss, ((sum(print_losses) + kldiv_loss.item() * batch_size) / n_totals)
 
     def beam_search(self, initial_hidden, context_hidden):
         n_words = self.n_words

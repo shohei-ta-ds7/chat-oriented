@@ -10,6 +10,32 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 
 
+class FFN(nn.Module):
+    def __init__(self, input_size, output_size, num_layers=1, dropout=0, act="tanh"):
+        super().__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.num_layers = num_layers
+        self.dropout = dropout
+        self.act = act
+        if self.act not in ["tanh", "relu"]:
+            raise ValueError(self.act, "is not an appropriate activation function.")
+        if self.act == "tanh":
+            self.act = torch.tanh
+        elif self.act == "relu":
+            self.act = torch.relu
+
+        self.linear = nn.Linear(input_size, output_size)
+
+    def forward(self, input_feat):
+        output = F.dropout(
+            self.linear(input_feat),
+            p=self.dropout,
+            training=self.training
+        )
+        return self.act(output)
+
+
 class EncoderRNN(nn.Module):
     def __init__(self, hidden_size, embedding, num_layers=1, dropout=0):
         super().__init__()
@@ -38,7 +64,7 @@ class ContextRNN(nn.Module):
         self.hidden_size = hidden_size
 
         self.gru = nn.GRU(
-            hidden_size*2, hidden_size*2, num_layers,
+            hidden_size, hidden_size, num_layers,
             dropout=(0 if num_layers == 1 else dropout),
             batch_first=True
         )
@@ -46,54 +72,6 @@ class ContextRNN(nn.Module):
     def forward(self, input_seq, hidden=None):
         output, hidden = self.gru(input_seq, hidden)
         return output, hidden
-
-
-class Maxout(nn.Module):
-    def __init__(self, pool_size):
-        super().__init__()
-        self.pool_size = pool_size
-
-    def forward(self, x):
-        assert x.size(-1) % self.pool_size == 0
-        m, _ = x.view(*x.size()[:-1], x.size(-1) // self.pool_size, self.pool_size).max(-1)
-        return m
-
-
-class DecoderRNN(nn.Module):
-    def __init__(self, embedding, hidden_size, output_size, num_layers=1, dropout=0.1):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.num_layers = num_layers
-        self.dropout = dropout
-
-        self.embedding = embedding
-        self.gru = nn.GRU(
-            hidden_size, hidden_size, num_layers,
-            dropout=(0 if num_layers == 1 else dropout),
-            batch_first=True
-        )
-
-        # Maxout activation
-        self.embedding_linear = nn.Linear(hidden_size, hidden_size*2)
-        self.hidden_linear = nn.Linear(hidden_size, hidden_size*2, bias=False)
-        self.context_linear = nn.Linear(hidden_size*2, hidden_size*2, bias=False)
-        self.maxout = Maxout(2)
-    
-        self.out = nn.Linear(hidden_size, output_size)
-
-    def forward(self, input_step, last_hidden, context_hidden):
-        embedded = self.embedding(input_step)
-        embedded = F.dropout(embedded, p=self.dropout, training=self.training)
-        rnn_output, hidden = self.gru(embedded, last_hidden)
-
-        pre_active = self.embedding_linear(embedded.squeeze(1)) \
-                    + self.hidden_linear(rnn_output.squeeze(1)) \
-                    + self.context_linear(context_hidden)
-        pre_active = self.maxout(pre_active)
-
-        return self.out(pre_active), hidden
 
 
 # Luong attention layer
@@ -166,3 +144,52 @@ class LuongAttnDecoderRNN(nn.Module):
         concat_output = torch.tanh(self.concat(concat_input))
 
         return self.out(concat_output), hidden
+
+
+class Maxout(nn.Module):
+    def __init__(self, pool_size):
+        super().__init__()
+        self.pool_size = pool_size
+
+    def forward(self, x):
+        assert x.size(-1) % self.pool_size == 0
+        m, _ = x.view(*x.size()[:-1], x.size(-1) // self.pool_size, self.pool_size).max(-1)
+        return m
+
+
+class HREDDecoderRNN(nn.Module):
+    def __init__(self, embedding, hidden_size, context_hidden_size, output_size, num_layers=1, dropout=0.1):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.context_hidden_size = context_hidden_size
+        self.output_size = output_size
+        self.num_layers = num_layers
+        self.dropout = dropout
+
+        self.embedding = embedding
+        self.gru = nn.GRU(
+            hidden_size, hidden_size, num_layers,
+            dropout=(0 if num_layers == 1 else dropout),
+            batch_first=True
+        )
+
+        self.embedding_linear = nn.Linear(hidden_size, hidden_size*2)
+        self.hidden_linear = nn.Linear(hidden_size, hidden_size*2, bias=False)
+        self.context_linear = nn.Linear(context_hidden_size, hidden_size*2, bias=False)
+        # Maxout activation
+        self.maxout = Maxout(2)
+
+        self.out = nn.Linear(hidden_size, output_size)
+
+    def forward(self, input_step, last_hidden, context_hidden):
+        embedded = self.embedding(input_step)
+        embedded = F.dropout(embedded, p=self.dropout, training=self.training)
+        rnn_output, hidden = self.gru(embedded, last_hidden)
+
+        pre_active = self.embedding_linear(embedded.squeeze(1)) \
+                    + self.hidden_linear(rnn_output.squeeze(1)) \
+                    + self.context_linear(context_hidden)
+        pre_active = self.maxout(pre_active)
+
+        return self.out(pre_active), hidden
