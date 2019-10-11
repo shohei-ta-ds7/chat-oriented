@@ -11,11 +11,10 @@ from torch.nn.utils.rnn import pad_packed_sequence
 
 
 class FFN(nn.Module):
-    def __init__(self, input_size, output_size, num_layers=1, dropout=0, act="tanh"):
+    def __init__(self, input_size, output_size, dropout=0, act="tanh"):
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
-        self.num_layers = num_layers
         self.dropout = dropout
         self.act = act
         if self.act not in ["tanh", "relu"]:
@@ -58,7 +57,7 @@ class EncoderRNN(nn.Module):
 
 
 class ContextRNN(nn.Module):
-    def __init__(self, hidden_size, num_layers=1, dropout=0):
+    def __init__(self, hidden_size, num_layers=1, dropout=0, bidirectional=False):
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
@@ -66,7 +65,7 @@ class ContextRNN(nn.Module):
         self.gru = nn.GRU(
             hidden_size, hidden_size, num_layers,
             dropout=(0 if num_layers == 1 else dropout),
-            batch_first=True
+            bidirectional=bidirectional, batch_first=True
         )
 
     def forward(self, input_seq, hidden=None):
@@ -193,3 +192,20 @@ class HREDDecoderRNN(nn.Module):
         pre_active = self.maxout(pre_active)
 
         return self.out(pre_active), hidden
+
+
+def l2_pooling(hiddens, src_len):
+    return torch.stack(
+        [
+            torch.sqrt(
+                torch.sum(torch.pow(hiddens[b][:src_len[b]], 2), dim=0)
+                /src_len[b].type(torch.FloatTensor).cuda()
+            )
+            for b in range(hiddens.size(0))
+        ]
+    )
+
+
+def sample_z(mean, var):
+    epsilon = torch.randn(mean.size()).cuda()
+    return mean + torch.sqrt(var) * epsilon

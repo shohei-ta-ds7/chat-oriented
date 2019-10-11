@@ -14,13 +14,15 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 
+from model.modules import FFN
 from model.modules import EncoderRNN
 from model.modules import ContextRNN
 from model.modules import HREDDecoderRNN
 from model.modules import l2_pooling
+from model.modules import sample_z
 
 
-class HRED(nn.Module):
+class VHCR(nn.Module):
     def __init__(self, hparams, n_words, itfloss_weight, fix_embedding=False):
         super().__init__()
         self.training = True
@@ -46,15 +48,52 @@ class HRED(nn.Module):
         self.decoder = HREDDecoderRNN(
             self.embedding,
             hparams["hidden_size"],
-            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*6,
             n_words,
             hparams["num_layers"],
             dropout=hparams["dropout"]
+        )
+        self.conv = ContextRNN(
+            hparams["hidden_size"]*2,
+            hparams["num_layers"],
+            dropout=hparams["dropout"],
+            bidirectional=True
+        )
+        self.context_init_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="tanh"
+        )
+        self.conv_mean_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="tanh"
+        )
+        self.conv_var_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="relu"
+        )
+        self.uttr_mean_ffn = FFN(
+            hparams["hidden_size"]*4,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="tanh"
+        )
+        self.uttr_var_ffn = FFN(
+            hparams["hidden_size"]*4,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="relu"
         )
         self.criterion = nn.NLLLoss(
             weight=torch.tensor(itfloss_weight).cuda() if itfloss_weight else None,
             ignore_index=hparams["PAD_id"]
         )
+        self.kldivloss = nn.KLDivLoss()
 
     def forward(self, data, train=True):
         src = data["src"]
@@ -80,15 +119,24 @@ class HRED(nn.Module):
 
         encoder_output, encoder_hidden = self.encoder(src, src_len)
 
-        # num_layers * num_directions, batch * MAX_DIAL_LEN, hidden_size
-        # -> batch * MAX_DIAL_LEN, num_layers, num_directions * hidden_size
-        encoder_hidden = encoder_hidden.transpose(1, 0).contiguous().view(batch_size * MAX_DIAL_LEN, num_layers, -1)
-
         # Back from permutation
         if len(src_len) > 1:
             encoder_output = encoder_output[back_index]
-            encoder_hidden = encoder_hidden[back_index]
+            encoder_hidden = encoder_hidden[:, back_index]
             src_len = src_len[back_index]
+
+        if train:
+            post_encoder_output, post_encoder_hidden = self.encoder(
+                data["tgt"].cuda(), data["tgt_len"].cuda()
+            )
+
+        # num_layers * num_directions, batch * MAX_DIAL_LEN, hidden_size
+        # -> batch * MAX_DIAL_LEN, num_layers, num_directions * hidden_size
+        encoder_hidden = encoder_hidden.transpose(1, 0).contiguous().view(batch_size * MAX_DIAL_LEN, num_layers, -1)
+        if train:
+            # num_layers * num_directions, batch, hidden_size
+            # -> batch, num_layers, num_directions * hidden_size
+            post_encoder_hidden = post_encoder_hidden.transpose(1, 0).contiguous().view(batch_size, num_layers, -1)
 
         if self.hparams["l2_pooling"]:
             # Separate forward and backward hiddens
@@ -97,28 +145,67 @@ class HRED(nn.Module):
             forward = l2_pooling(encoder_output[:, :, 0], src_len)
             backward = l2_pooling(encoder_output[:, :, 1], src_len)
             encoder_hidden = torch.cat((forward, backward), dim=1).view(batch_size, MAX_DIAL_LEN, -1)
+            if train:
+                # Separate forward and backward hiddens
+                post_encoder_output = post_encoder_output.view(batch_size, data["tgt"].size(1), 2, -1)
+                # L2 pooling
+                forward = l2_pooling(post_encoder_output[:, :, 0], data["tgt_len"])
+                backward = l2_pooling(post_encoder_output[:, :, 1], data["tgt_len"])
+                post_encoder_hidden = torch.cat((forward, backward), dim=1).view(batch_size, 1, -1)
         else:
             # Reshape to each uttr context (use only top hidden states)
             encoder_hidden = encoder_hidden[:, -1].view(batch_size, MAX_DIAL_LEN, -1)
+            if train:
+                post_encoder_hidden = post_encoder_hidden[:, -1].view(batch_size, 1, -1)
+
+        # sample z_conv
+        conv_output, _ = self.conv(encoder_hidden)
+        conv_output = conv_output[:, -1]
+        conv_output = conv_output[:, :hidden_size*2] + conv_output[:, hidden_size*2:]
+        mean_conv = self.conv_mean_ffn(conv_output)
+        var_conv = self.conv_var_ffn(conv_output)
+        z_conv = sample_z(mean_conv, var_conv)
+        context_hidden = self.context_init_ffn(z_conv).expand(
+            num_layers, batch_size, hidden_size*2
+        ).contiguous()
 
         # Input each dial context
-        context_output, _ = self.context(encoder_hidden)
-        # batch, uttr, hidden_size -> batch * uttr, hidden_size
+        context_output, context_hidden = self.context(encoder_hidden, context_hidden)
+        if train:
+            post_context_output, _ = self.context(
+                post_encoder_hidden, context_hidden
+            )
+        # sample z_uttr
         context_output = context_output[:, -1]
-        decoder_hidden = (context_output[:, :hidden_size] + context_output[:, hidden_size:])
+        context_z_conv = torch.cat((context_output, z_conv), dim=1)
+        mean_uttr = self.uttr_mean_ffn(context_z_conv)
+        var_uttr = self.uttr_var_ffn(context_z_conv)
+        z_uttr = sample_z(mean_uttr, var_uttr)
+        if train:
+            post_context_output = post_context_output[:, 0]
+            post_context_z_conv = torch.cat((post_context_output, z_conv), dim=1)
+            mean_post_uttr = self.uttr_mean_ffn(post_context_z_conv)
+            var_post_uttr = self.uttr_var_ffn(post_context_z_conv)
+            post_z_uttr = sample_z(mean_post_uttr, var_post_uttr)
+
+        # make context vector and initial decoder hidden
+        context_output = torch.cat((context_output, z_uttr, z_conv), dim=1)
+        decoder_hidden = (
+            context_output[:, :hidden_size]
+            + context_output[:, hidden_size:hidden_size*2]
+            + context_output[:, hidden_size*2:hidden_size*3]
+            + context_output[:, hidden_size*3:hidden_size*4]
+            + context_output[:, hidden_size*4:hidden_size*5]
+            + context_output[:, hidden_size*5:]
+        )
         decoder_hidden = decoder_hidden.expand(num_layers, batch_size, hidden_size).contiguous()
 
         if train:
-            return self.compute_loss(decoder_hidden, context_output, data["tgt"])
+            return self.compute_loss(decoder_hidden, context_output, z_conv, z_uttr, post_z_uttr, data["tgt"])
         else:
             return self.beam_search(decoder_hidden[:, -1].unsqueeze(1).contiguous(), context_output[-1].unsqueeze(0))
 
-    def l2_pooling(self, hiddens, src_len):
-        return torch.stack(
-            [torch.sqrt(torch.sum(torch.pow(hiddens[b][:src_len[b]], 2), dim=0)/src_len[b].type(torch.FloatTensor).cuda())
-            for b in range(hiddens.size(0))])
-
-    def compute_loss(self, initial_hidden, context_hidden, tgt):
+    def compute_loss(self, initial_hidden, context_hidden, z_conv, z_uttr, post_z_uttr, tgt):
         PAD_id = self.hparams["PAD_id"]
         tgt = tgt.cuda()
         batch_size = tgt.size(0)
@@ -169,7 +256,20 @@ class HRED(nn.Module):
                 _, topi = decoder_output.topk(1)
                 decoder_input = torch.LongTensor([[topi[i][0]] for i in range(batch_size)]).cuda()
 
-        return loss, (sum(print_losses) / n_totals)
+        conv_kldiv_loss = -self.kldivloss(
+            F.log_softmax(z_conv, dim=1),
+            F.softmax(torch.randn(z_conv.size()).cuda(), dim=1)
+        )
+
+        uttr_kldiv_loss = -self.kldivloss(
+            F.log_softmax(z_uttr, dim=1),
+            F.softmax(post_z_uttr, dim=1)
+        )
+
+        return (
+            loss + conv_kldiv_loss + uttr_kldiv_loss,
+            (sum(print_losses) + (conv_kldiv_loss.item() + uttr_kldiv_loss.item()) * batch_size) / n_totals
+        )
 
     def beam_search(self, initial_hidden, context_hidden):
         n_words = self.n_words

@@ -18,6 +18,8 @@ from model.modules import FFN
 from model.modules import EncoderRNN
 from model.modules import ContextRNN
 from model.modules import HREDDecoderRNN
+from model.modules import l2_pooling
+from model.modules import sample_z
 
 
 class VHRED(nn.Module):
@@ -43,20 +45,6 @@ class VHRED(nn.Module):
             hparams["num_layers"],
             dropout=hparams["dropout"]
         )
-        self.mean_ffn = FFN(
-            hparams["hidden_size"]*2,
-            hparams["hidden_size"]*2,
-            2,
-            dropout=hparams["dropout"],
-            act="tanh"
-        )
-        self.var_ffn = FFN(
-            hparams["hidden_size"]*2,
-            hparams["hidden_size"]*2,
-            2,
-            dropout=hparams["dropout"],
-            act="relu"
-        )
         self.decoder = HREDDecoderRNN(
             self.embedding,
             hparams["hidden_size"],
@@ -64,6 +52,18 @@ class VHRED(nn.Module):
             n_words,
             hparams["num_layers"],
             dropout=hparams["dropout"]
+        )
+        self.mean_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="tanh"
+        )
+        self.var_ffn = FFN(
+            hparams["hidden_size"]*2,
+            hparams["hidden_size"]*2,
+            dropout=hparams["dropout"],
+            act="relu"
         )
         self.criterion = nn.NLLLoss(
             weight=torch.tensor(itfloss_weight).cuda() if itfloss_weight else None,
@@ -118,15 +118,15 @@ class VHRED(nn.Module):
             # Separate forward and backward hiddens
             encoder_output = encoder_output.view(batch_size * MAX_DIAL_LEN, MAX_UTTR_LEN, 2, -1)
             # L2 pooling
-            forward = self.l2_pooling(encoder_output[:, :, 0], src_len)
-            backward = self.l2_pooling(encoder_output[:, :, 1], src_len)
+            forward = l2_pooling(encoder_output[:, :, 0], src_len)
+            backward = l2_pooling(encoder_output[:, :, 1], src_len)
             encoder_hidden = torch.cat((forward, backward), dim=1).view(batch_size, MAX_DIAL_LEN, -1)
             if train:
                 # Separate forward and backward hiddens
                 post_encoder_output = post_encoder_output.view(batch_size, data["tgt"].size(1), 2, -1)
                 # L2 pooling
-                forward = self.l2_pooling(post_encoder_output[:, :, 0], data["tgt_len"])
-                backward = self.l2_pooling(post_encoder_output[:, :, 1], data["tgt_len"])
+                forward = l2_pooling(post_encoder_output[:, :, 0], data["tgt_len"])
+                backward = l2_pooling(post_encoder_output[:, :, 1], data["tgt_len"])
                 post_encoder_hidden = torch.cat((forward, backward), dim=1).view(batch_size, 1, -1)
         else:
             # Reshape to each uttr context (use only top hidden states)
@@ -142,10 +142,14 @@ class VHRED(nn.Module):
             )
         # batch, uttr, hidden_size -> batch * uttr, hidden_size
         context_output = context_output[:, -1]
-        z = self.sample_z(context_output)
+        mean = self.mean_ffn(context_output)
+        var = self.var_ffn(context_output)
+        z = sample_z(mean, var)
         if train:
             post_context_output = post_context_output[:, 0]
-            post_z = self.sample_z(post_context_output)
+            mean_post = self.mean_ffn(post_context_output)
+            var_post = self.var_ffn(post_context_output)
+            post_z = sample_z(mean_post, var_post)
         context_output = torch.cat((context_output, z), dim=1)
         decoder_hidden = (
             context_output[:, :hidden_size]

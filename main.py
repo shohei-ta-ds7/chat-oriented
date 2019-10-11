@@ -25,6 +25,7 @@ from utils.test import chat
 from model.encdec import EncDec
 from model.hred import HRED
 from model.vhred import VHRED
+from model.vhcr import VHCR
 
 
 os.makedirs("./log", exist_ok=True)
@@ -36,10 +37,6 @@ handler.setLevel(logging.DEBUG)
 handler.setFormatter(logging.Formatter(format))
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
-
-encdec = "encdec"
-hred = "hred"
-vhred = "vhred"
 
 
 def get_argparse():
@@ -90,7 +87,7 @@ def get_argparse():
         "These arguments are ignored if a checkpoint file is given and model is not pretrained.")
     hparams.add_argument(
         "--model_arc",
-        help="model architecture (encdec, hred, or vhred)",
+        help="model architecture (encdec, hred, vhred, or vhcr)",
         default="hred"
     )
     hparams.add_argument(
@@ -308,12 +305,14 @@ if __name__ == "__main__":
         itfloss_weight = None
 
     print("Building model...")
-    if hparams["model_arc"] == encdec:
+    if hparams["model_arc"] == "encdec":
         model = EncDec(hparams, n_words, itfloss_weight, fix_embedding).cuda()
-    elif hparams["model_arc"] == hred:
+    elif hparams["model_arc"] == "hred":
         model = HRED(hparams, n_words, itfloss_weight, fix_embedding).cuda()
-    elif hparams["model_arc"] == vhred:
+    elif hparams["model_arc"] == "vhred":
         model = VHRED(hparams, n_words, itfloss_weight, fix_embedding).cuda()
+    elif hparams["model_arc"] == "vhcr":
+        model = VHCR(hparams, n_words, itfloss_weight, fix_embedding).cuda()
     else:
         raise ValueError("Unknown model architecture!")
     if checkpoint:

@@ -43,6 +43,9 @@ https://arxiv.org/abs/1507.04808
 - vhred [Serban et al., 2017]
 https://arxiv.org/abs/1605.06069
 
+- vhcr [Park et al., 2018]
+https://arxiv.org/abs/1804.03424
+
 "MODEL_PREFIX" is a prefix of checkpoints such as "./pkl/ncm".
 
 To print arguments, type as follows.
