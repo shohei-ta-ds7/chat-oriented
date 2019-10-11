@@ -8,7 +8,7 @@ Neural Conversational Models Repository
 
 ## Usage
 
-- Launching pipenv shell.
+#### Launching pipenv shell.
 
 ```sh
 pipenv shell
@@ -16,7 +16,7 @@ pipenv shell
 
 ### Preprocessing
 
-- Downloading, unzipping, and preprocessing DailyDialog (http://yanran.li/dailydialog)
+#### Downloading, unzipping, and preprocessing DailyDialog (http://yanran.li/dailydialog)
 
 ```sh
 ./dl_dailydialog.sh
@@ -24,13 +24,24 @@ pipenv shell
 
 ### Training
 
-- Training model
+#### Training model
 
 ```sh
 python ./main.py --model_arc MODEL_ARCHITECTURE --model_pre MODEL_PREFIX
 ```
 
-"MODEL_ARCHITECTURE" is an NCM architecture such as HRED.
+"MODEL_ARCHITECTURE" is an NCM architecture such as "hred".
+
+Available models are as follows.
+
+- encdec [Luong et al., 2015]
+https://www.aclweb.org/anthology/D15-1166/
+
+- hred [Serban et al., 2016]
+https://arxiv.org/abs/1507.04808
+
+- vhred [Serban et al., 2017]
+https://arxiv.org/abs/1605.06069
 
 "MODEL_PREFIX" is a prefix of checkpoints such as "./pkl/ncm".
 
@@ -42,17 +53,17 @@ python ./main.py --help
 
 ### Evaluation
 
-- Beam Search Decoding
+#### Beam Search Decoding
 
 ```sh
 python ./main.py --mode inference -c CHECKPOINT_PATH
 ```
 
-"CHECKPOINT_PATH" is a checkpoint path such as "./pkl/ncm.tar".
+"CHECKPOINT_PATH" is a checkpoint path such as "./pkl/hred.tar".
 
-An inference pickle file, such as "./pkl/inf.ncm.tar", will be outputted.
+An inference pickle file, such as "./pkl/inf.hred.tar", will be outputted.
 
-- Automatic Evaluation
+#### Automatic Evaluation
 
 ```sh
 python ./auto_eval.py -i INFERENCE_PICKLE_FILE_LIST
@@ -60,7 +71,7 @@ python ./auto_eval.py -i INFERENCE_PICKLE_FILE_LIST
 
 "INFERENCE_PICKLE_FILE_LIST" is a file list such as "./pkl/inf.encdec.tar ./pkl/inf.hred.tar".
 
-- Chatting with NCM
+#### Chatting with NCM
 
 ```sh
 python ./ncm/main.py --mode chat -c CHECKPOINT_PATH
