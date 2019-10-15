@@ -46,7 +46,7 @@ https://arxiv.org/abs/1605.06069
 - vhcr [Park et al., 2018]
 https://arxiv.org/abs/1804.03424
 
-"MODEL_PREFIX" is a prefix of checkpoints such as "./pkl/ncm".
+"MODEL_PREFIX" is a prefix of checkpoints such as "./pkl/hred".
 
 To print arguments, type as follows.
 
@@ -77,7 +77,7 @@ python ./auto_eval.py -i INFERENCE_PICKLE_FILE_LIST
 #### Chatting with NCM
 
 ```sh
-python ./ncm/main.py --mode chat -c CHECKPOINT_PATH
+python ./main.py --mode chat -c CHECKPOINT_PATH
 ```
 
 To quit, input ":q" or ":quit".
