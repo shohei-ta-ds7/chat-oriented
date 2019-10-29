@@ -1,5 +1,5 @@
-# ncm
-Neural Conversational Models Repository
+# chat-oriented
+Chat-oriented system implementation
 
 ## Requirements
 - pipenv
