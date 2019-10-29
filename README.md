@@ -1,5 +1,5 @@
 # chat-oriented
-Chat-oriented system implementation
+Chat-oriented dialogue system implementation
 
 ## Requirements
 - pipenv
